@@ -1,0 +1,71 @@
+name: Reusable CI Pipeline
+on:
+  workflow_call:
+  inputs:
+    node-versions:
+      required: false
+      type: string
+      default: '["18","20","22"]'
+    run-lint:
+      required: false
+      type: boolean
+      default: true
+    outputs:
+    build-status:
+      description: "Resultado de la construccion"
+      value: ${{ steps.build.outputs.build-status }}
+      jobs:
+      test-matrix:
+      name: Test Node.js v${{ matrix.node}}
+      runs-on: ubuntu-latest
+      strategy:
+        matrix:
+          node: ${{ fromJSON(inputs.node-versions) }}
+          steps:
+            - name: Checkout del codigo
+              uses: actions/checkout@v4
+            - name: Set up Node.js ${{ matrix.node }} con cache 
+              uses: actions/setup-node@v4
+              with:
+                node-version: ${{ matrix.node }}
+                cache: npm
+            - name: Instalacion limpia  de dependencias
+              run: npm ci
+            - name: Ejecutar Linter
+              if: ${{ inputs.run-lint }}
+              run: npm run lint
+            - name: Ejecutar pruebas unitarias e integracion
+              run: npm test -- --coverage
+            - name: Subir reporte de cobertura a Codecov
+              uses: codecov/codecov-action@v4
+              with:
+                name: coverage-node-${{ matrix.node }}
+                path: coverage/
+                retention-days: 7
+              build:
+              name: Build & Package
+              needs: test-matrix
+              runs-on: ubuntu-latest
+              outputs:
+                status: ${{ steps.set-output.outputs.status }}
+              steps:
+                - name: Checkout del codigo
+                  uses: actions/checkout@v4
+                - name: Configuracion de Node.js 
+                  uses: actions/setup-node@v4
+                  with:
+                    node-version:'20'
+                    cache: npm
+                - name: Instalar y compilar
+                  run: |
+                    npm ci
+                    npm run build
+                - name: Guardar Artifact de produccion
+                  uses: actions/upload-artifact@v3
+                  with:
+                    name: build-artifacts
+                    path: dist/
+                    retention-days: 1
+                    -id: set-output
+                - name: Set output status
+                  run: echo "status=success" >> $GITHUB_OUTPUT
